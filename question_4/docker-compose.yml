@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # Base de données Postgres pour les données taxi
+  postgres:
+    image: postgres:17-alpine
+    container_name: taxi_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ny_taxi
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Kestra Server (UI + Worker)
+  kestra:
+    image: kestra/kestra:latest
+    container_name: kestra_server
+    command: server standalone
+    ports:
+      - "8080:8080"
+    environment:
+      KESTRA_LOG_LEVEL: INFO
+      KESTRA_STORAGE_TYPE: LOCAL  
+      KESTRA_PYTHON_IMAGE: python:3.11-slim
+      KESTRA_PYTHON_REQUIREMENTS_FILE: /app/requirements.txt
+    volumes:
+      - ./flows:/app/flows
+      - ./data:/app/data
+      - ./requirements.txt:/app/requirements.txt         
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - kestra-net
+
+  # pgAdmin pour explorer les données
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8081:80"
+    depends_on:
+      - postgres
+
+networks:
+  kestra-net:
+    driver: bridge
+
+volumes:
+  pgdata:
