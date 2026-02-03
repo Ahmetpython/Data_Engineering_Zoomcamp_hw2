@@ -1,0 +1,57 @@
+id: count_yellow_march_2021
+namespace: taxi
+
+tasks:
+  # 1. Télécharger UNIQUEMENT Mars 2021
+  - id: download_yellow_mar2021
+    type: io.kestra.plugin.core.http.Download
+    uri: https://github.com/DataTalksClub/nyc-tlc-data/releases/download/yellow/yellow_tripdata_2021-03.csv
+    dest: data/yellow_tripdata_2021-03.csv
+
+  # 2. Créer table spécifique Mars 2021
+  - id: create_yellow_mar2021_table
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    url: jdbc:postgresql://postgres:5432/ny_taxi
+    username: postgres
+    password: postgres
+    sql: |
+      CREATE TABLE IF NOT EXISTS yellow_taxi_2021_03 (
+        VendorID INTEGER,
+        tpep_pickup_datetime TIMESTAMP,
+        tpep_dropoff_datetime TIMESTAMP,
+        passenger_count INTEGER,
+        trip_distance DECIMAL(10,2),
+        RatecodeID INTEGER,
+        store_and_fwd_flag VARCHAR(1),
+        PULocationID INTEGER,
+        DOLocationID INTEGER,
+        payment_type INTEGER,
+        fare_amount DECIMAL(10,2),
+        extra DECIMAL(10,2),
+        mta_tax DECIMAL(10,2),
+        tip_amount DECIMAL(10,2),
+        tolls_amount DECIMAL(10,2),
+        total_amount DECIMAL(10,2),
+        congestion_surcharge DECIMAL(10,2)
+      );
+
+  # 3. Charger le CSV (Mars 2021 seulement)
+  - id: load_yellow_mar2021
+    type: io.kestra.plugin.scripts.shell.Scripts
+    containerImage: postgres:17-alpine
+    commands:
+      - |
+        psql "postgresql://postgres:postgres@postgres:5432/ny_taxi" -c "
+        COPY yellow_taxi_2021_03 FROM '/data/yellow_tripdata_2021-03.csv' 
+        DELIMITER ',' CSV HEADER NULL 'NULL';
+        "
+
+  # 4. Compter les lignes (Q5 !)
+  - id: count_march_rows
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    url: jdbc:postgresql://postgres:5432/ny_taxi
+    username: postgres
+    password: postgres
+    sql: |
+      SELECT COUNT(*) as yellow_march_2021_rows 
+      FROM yellow_taxi_2021_03;
