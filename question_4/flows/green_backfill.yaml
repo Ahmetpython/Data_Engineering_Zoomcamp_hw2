@@ -1,0 +1,24 @@
+id: green_taxi_2020_backfill
+namespace: taxi
+tasks:
+  - id: for_each_month
+    type: io.kestra.plugin.core.flow.Flow
+    flowId: count_green_taxi_2020
+    namespace: taxi
+    inputs:
+      month: "{{ outputs.loop.value }}"
+loops:
+  - id: months
+    items:
+      - "01"
+      - "02"
+      - "03"
+      - "04"
+      - "05"
+      - "06"
+      - "07"
+      - "08"
+      - "09"
+      - "10"
+      - "11"
+      - "12"
