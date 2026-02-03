@@ -1,0 +1,47 @@
+id: q1_yellow_dec2020_size
+namespace: taxi_q1
+
+tasks:
+  # 1. Télécharger le fichier COMPRIMÉ (.csv.gz)
+  - id: download_compressed
+    type: io.kestra.plugin.core.http.Download
+    uri: https://github.com/DataTalksClub/nyc-tlc-data/releases/download/yellow/yellow_tripdata_2020-12.csv.gz
+    dest: data/yellow_tripdata_2020-12.csv.gz
+
+  # 2. EXTRAIRE → Fichier NON-COMPRESSÉ (c'est ÇA qu'on mesure !)
+  - id: extract_csv
+    type: io.kestra.plugin.scripts.shell.Scripts
+    containerImage: alpine:latest
+    commands:
+      - gunzip -c /data/yellow_tripdata_2020-12.csv.gz > /data/yellow_tripdata_2020-12.csv
+
+  # 3. MESURER la taille du CSV NON-COMPRESSÉ
+  - id: get_file_size
+    type: io.kestra.plugin.scripts.shell.Scripts
+    containerImage: alpine:latest
+    commands:
+      - |
+        SIZE_BYTES=$(stat -c%s /data/yellow_tripdata_2020-12.csv)
+        SIZE_MB=$(echo "scale=1; $SIZE_BYTES / 1024 / 1024" | bc)
+        echo "File size: ${SIZE_MB} MiB (${SIZE_BYTES} bytes)"
+        echo "uncompressed_size_bytes=${SIZE_BYTES}" >> outputs.properties
+        echo "uncompressed_size_mb=${SIZE_MB}" >> outputs.properties
+
+  # 4. (Bonus) Charger en DB et compter lignes
+  - id: load_and_count
+    type: io.kestra.plugin.scripts.shell.Scripts
+    containerImage: postgres:17-alpine
+    commands:
+      - |
+        psql "postgresql://postgres:postgres@postgres:5432/ny_taxi" -c "
+        CREATE TABLE IF NOT EXISTS yellow_dec2020 (
+          VendorID INTEGER, tpep_pickup_datetime TIMESTAMP, tpep_dropoff_datetime TIMESTAMP,
+          passenger_count INTEGER, trip_distance DECIMAL, RatecodeID INTEGER,
+          store_and_fwd_flag VARCHAR, PULocationID INTEGER, DOLocationID INTEGER,
+          payment_type INTEGER, fare_amount DECIMAL, extra DECIMAL, mta_tax DECIMAL,
+          tip_amount DECIMAL, tolls_amount DECIMAL, total_amount DECIMAL
+        );
+        COPY yellow_dec2020 FROM '/data/yellow_tripdata_2020-12.csv' 
+        DELIMITER ',' CSV HEADER NULL 'NULL';
+        SELECT COUNT(*) as row_count FROM yellow_dec2020;
+        "
