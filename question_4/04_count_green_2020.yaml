@@ -1,0 +1,69 @@
+id: count_green_taxi_2020
+namespace: taxi
+
+tasks:
+  - id: download_green_csv
+    type: io.kestra.plugin.core.http.Download
+    uri: https://d37ci6vzurychx.cloudfront.net/trip-data/green_tripdata_2020-{{ format("MM", taskrun.parent.id) }}.parquet
+    dest: data/green_tripdata_2020-{{ format("MM", taskrun.parent.id) }}.parquet
+
+  - id: create_green_table
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    url: jdbc:postgresql://postgres:5432/ny_taxi
+    username: postgres
+    password: postgres
+    sql: |
+      CREATE TABLE IF NOT EXISTS green_taxi_2020 (
+        VendorID INTEGER,
+        lpep_pickup_datetime TIMESTAMP,
+        lpep_dropoff_datetime TIMESTAMP,
+        passenger_count INTEGER,
+        trip_distance DECIMAL(10,2),
+        RatecodeID INTEGER,
+        store_and_fwd_flag VARCHAR(1),
+        PULocationID INTEGER,
+        DOLocationID INTEGER,
+        payment_type INTEGER,
+        fare_amount DECIMAL(10,2),
+        extra DECIMAL(10,2),
+        mta_tax DECIMAL(10,2),
+        tip_amount DECIMAL(10,2),
+        tolls_amount DECIMAL(10,2),
+        ehail_fee DECIMAL(10,2),
+        total_amount DECIMAL(10,2),
+        improvement_surcharge DECIMAL(10,2)
+      );
+
+  - id: load_green_parquet
+    type: io.kestra.plugin.scripts.python.Scripts
+    containerImage: python:3.11-slim
+    requirements:
+      - pandas
+      - pyarrow
+      - sqlalchemy
+      - psycopg2-binary
+    script: |
+      import pandas as pd
+      from sqlalchemy import create_engine
+      
+      parquet_file = '/data/green_tripdata_2020-{{ format("MM", taskrun.parent.id) }}.parquet'
+      df = pd.read_parquet(parquet_file)
+      
+      engine = create_engine('postgresql://postgres:postgres@postgres:5432/ny_taxi')
+      df.to_sql('green_taxi_2020', engine, if_exists='append', index=False, chunksize=10000)
+      print(f"Loaded {len(df)} rows")
+
+  - id: count_green_rows
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    url: jdbc:postgresql://postgres:5432/ny_taxi
+    username: postgres
+    password: postgres
+    sql: |
+      SELECT COUNT(*) as total_green_2020 
+      FROM green_taxi_2020;
+
+triggers:
+  - id: monthly_green
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "0 9 1 * *"
+    timezone: America/New_York
