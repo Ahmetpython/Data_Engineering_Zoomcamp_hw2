@@ -1,0 +1,60 @@
+id: count_yellow_taxi_2020
+namespace: taxi
+
+tasks:
+  - id: download_all_yellow_2020
+    type: io.kestra.plugin.core.http.Download
+    uri: https://github.com/DataTalksClub/nyc-tlc-data/releases/download/{{ inputs.year }}/yellow_tripdata_{{ inputs.year }}-{{ format("MM", inputs.month) }}.csv
+    dest: data/yellow_tripdata_{{ inputs.year }}_{{ inputs.month }}.csv
+    
+  - id: create_table
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    url: jdbc:postgresql://postgres:5432/ny_taxi
+    username: postgres
+    password: postgres
+    sql: |
+      CREATE TABLE IF NOT EXISTS yellow_taxi_2020 (
+        VendorID INTEGER,
+        tpep_pickup_datetime TIMESTAMP,
+        tpep_dropoff_datetime TIMESTAMP,
+        passenger_count INTEGER,
+        trip_distance DECIMAL,
+        RatecodeID INTEGER,
+        store_and_fwd_flag VARCHAR,
+        PULocationID INTEGER,
+        DOLocationID INTEGER,
+        payment_type INTEGER,
+        fare_amount DECIMAL,
+        extra DECIMAL,
+        mta_tax DECIMAL,
+        tip_amount DECIMAL,
+        tolls_amount DECIMAL,
+        total_amount DECIMAL
+      );
+
+  - id: load_csv
+    type: io.kestra.plugin.scripts.shell.Scripts
+    containerImage: postgres:17-alpine
+    commands:
+      - |
+        psql "postgresql://postgres:postgres@postgres:5432/ny_taxi" -c "
+        COPY yellow_taxi_2020 FROM '/data/yellow_tripdata_{{ inputs.year }}_{{ inputs.month }}.csv' 
+        DELIMITER ',' CSV HEADER;
+        "
+    containerEnv:
+      PGPASSWORD: postgres
+
+  - id: count_rows
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    url: jdbc:postgresql://postgres:5432/ny_taxi
+    username: postgres
+    password: postgres
+    sql: SELECT COUNT(*) as total_rows FROM yellow_taxi_2020;
+    
+inputs:
+  year:
+    type: STRING
+    defaults: "2020"
+  month:
+    type: STRING
+    defaults: "01"
